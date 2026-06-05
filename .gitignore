@@ -1,0 +1,8 @@
+@"
+.env
+__pycache__/
+*.pyc
+models/*.bin
+models/*.pt
+.ipynb_checkpoints/
+"@ | Set-Content .gitignore
