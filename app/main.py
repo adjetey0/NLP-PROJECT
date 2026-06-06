@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(
-    page_title="HTML Assistant",
+    page_title="NL → HTML Assistant",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -14,209 +14,150 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif !important;
+    font-family: 'Syne', sans-serif !important;
 }
 
-.stApp {
-    background: #0f0f13;
-    color: #e2e2e8;
-}
-
-/* Hide streamlit chrome */
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 2rem 2rem 1rem !important; max-width: 1400px !important; }
 
-/* App header */
-.app-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #1e1e28;
+.main-title {
+    font-size: 2.6rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.2rem;
+    line-height: 1.2;
 }
-.app-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #e2e2e8;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.beta-badge {
-    font-size: 10px;
-    font-weight: 500;
-    background: #1a2744;
-    color: #60a5fa;
-    padding: 2px 8px;
-    border-radius: 20px;
-    letter-spacing: 0.05em;
-}
-.app-subtitle {
-    font-size: 13px;
-    color: #6b6b80;
-    margin: 2px 0 0;
+.subtitle {
+    color: #6b7280;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
 }
 
-/* Section labels */
 .section-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #4a4a60;
-    margin-bottom: 8px;
+    color: #6b7280;
+    margin-bottom: 6px;
 }
+
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 1rem 0; }
 
 /* Chips */
-.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.2rem; }
-.chip {
-    font-size: 12px;
-    padding: 5px 12px;
-    border-radius: 20px;
-    border: 1px solid #2a2a3a;
-    color: #8888aa;
-    background: #16161f;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-.chip:hover { border-color: #3b82f6; color: #60a5fa; background: #0f1f3d; }
-
-/* Panel cards */
-.panel {
-    background: #13131c;
-    border: 1px solid #1e1e28;
-    border-radius: 12px;
-    padding: 1rem 1.1rem;
-    height: 100%;
-}
-.panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-}
-
-/* Textarea */
-.stTextArea textarea {
-    background: #0f0f16 !important;
-    border: 1px solid #2a2a3a !important;
-    border-radius: 8px !important;
-    color: #e2e2e8 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 13px !important;
-    resize: none !important;
-}
-.stTextArea textarea:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.1) !important;
-}
-
-/* Text input */
-.stTextInput input {
-    background: #0f0f16 !important;
-    border: 1px solid #2a2a3a !important;
-    border-radius: 8px !important;
-    color: #e2e2e8 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 13px !important;
-}
-
-/* Checkboxes */
-.stCheckbox label {
+.stButton > button[kind="secondary"] {
+    background: transparent !important;
+    border: 1px solid #e5e7eb !important;
+    color: #6b7280 !important;
+    border-radius: 20px !important;
     font-size: 12px !important;
-    color: #6b6b80 !important;
+    padding: 4px 14px !important;
+    font-family: 'Syne', sans-serif !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    border-color: #a78bfa !important;
+    color: #7c3aed !important;
 }
 
 /* Generate button */
-.stButton > button {
-    background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
+div[data-testid="stButton"]:has(button#gen_btn) > button,
+.gen-btn > button {
+    background: linear-gradient(135deg, #7c3aed, #2563eb) !important;
     color: white !important;
     border: none !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    padding: 0.6rem 1rem !important;
+    width: 100% !important;
+    font-family: 'Syne', sans-serif !important;
+}
+
+.stButton > button {
+    font-family: 'Syne', sans-serif !important;
     border-radius: 8px !important;
-    font-weight: 600 !important;
+}
+
+/* Primary generate button override */
+button[kind="primary"] {
+    background: linear-gradient(135deg, #7c3aed, #2563eb) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 700 !important;
+}
+
+.stTextArea textarea {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    font-family: 'Syne', sans-serif !important;
+    font-size: 14px !important;
+    resize: none !important;
+}
+.stTextArea textarea:focus {
+    border-color: #a78bfa !important;
+    box-shadow: 0 0 0 3px rgba(167,139,250,0.15) !important;
+}
+
+.stTextInput input {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    font-family: 'Syne', sans-serif !important;
     font-size: 13px !important;
-    padding: 0.55rem 1rem !important;
-    width: 100% !important;
-    transition: opacity 0.2s !important;
 }
-.stButton > button:hover { opacity: 0.88 !important; }
+.stTextInput input:focus {
+    border-color: #a78bfa !important;
+}
 
-/* Secondary buttons */
+.stCheckbox label {
+    font-size: 13px !important;
+    color: #6b7280 !important;
+    font-family: 'Syne', sans-serif !important;
+}
+
 .stDownloadButton > button {
-    background: #1e1e2e !important;
-    color: #a0a0c0 !important;
-    border: 1px solid #2a2a3a !important;
+    border: 1px solid #e5e7eb !important;
     border-radius: 8px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
+    font-size: 13px !important;
+    font-family: 'Syne', sans-serif !important;
     width: 100% !important;
 }
 
-/* Code block */
-.stCodeBlock {
-    border-radius: 8px !important;
-    border: 1px solid #1e1e28 !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 11.5px !important;
+/* Status badges */
+.status-idle  { background:#f3f4f6; color:#9ca3af; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
+.status-busy  { background:#fef3c7; color:#d97706; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
+.status-done  { background:#d1fae5; color:#065f46; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
+.status-error { background:#fee2e2; color:#991b1b; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
+
+.empty-panel {
+    background: #f9fafb;
+    border: 1.5px dashed #e5e7eb;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d1d5db;
+    font-size: 13px;
+    font-family: 'Syne', sans-serif;
 }
-
-/* Status badge */
-.status-idle    { background:#1e1e2e; color:#6b6b80; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:500; }
-.status-busy    { background:#1c1a10; color:#fbbf24; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:500; }
-.status-done    { background:#0d1f18; color:#34d399; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:500; }
-.status-error   { background:#1f0d0d; color:#f87171; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:500; }
-
-/* History chips */
-.hist-chip {
-    display: inline-block;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    border: 1px solid #1e1e28;
-    color: #6b6b80;
-    background: #0f0f16;
-    margin: 2px;
-    cursor: pointer;
-}
-
-/* Preview wrapper */
-.preview-wrap {
-    background: #0a0a10;
-    border: 1px solid #1e1e28;
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-/* Divider */
-hr { border: none; border-top: 1px solid #1e1e28; margin: 1rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Session state ──────────────────────────────────────────────────────────────
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "last_code" not in st.session_state:
-    st.session_state.last_code = ""
-if "status" not in st.session_state:
-    st.session_state.status = "idle"
-if "prompt_input" not in st.session_state:
-    st.session_state.prompt_input = ""
+for k, v in [("history", []), ("last_code", ""), ("status", "idle"), ("prompt_input", "")]:
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # ── Header ─────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="app-header">
-  <div>
-    <div class="app-title">⚡ HTML Assistant <span class="beta-badge">BETA</span></div>
-    <div class="app-subtitle">Describe any UI component — get working HTML/CSS instantly.</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="main-title">NL → HTML Assistant</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Describe a UI component in plain English. Get working HTML/CSS instantly.</div>', unsafe_allow_html=True)
 
 # ── Example chips ──────────────────────────────────────────────────────────────
 EXAMPLES = [
@@ -225,11 +166,11 @@ EXAMPLES = [
     "A dark navbar with logo and nav links",
     "Pricing table: Free, Pro, Enterprise",
     "A login form with email and password",
-    "A toast notification — saved successfully",
-    "A star rating showing 4 of 5 stars",
+    "A toast — saved successfully",
+    "A star rating: 4 of 5 stars",
 ]
 
-st.markdown('<div class="section-label">Quick examples</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Try an example</div>', unsafe_allow_html=True)
 chip_cols = st.columns(len(EXAMPLES))
 for i, (col, ex) in enumerate(zip(chip_cols, EXAMPLES)):
     with col:
@@ -241,21 +182,19 @@ for i, (col, ex) in enumerate(zip(chip_cols, EXAMPLES)):
 st.markdown("<hr>", unsafe_allow_html=True)
 
 # ── Main layout ────────────────────────────────────────────────────────────────
-left, right = st.columns([1, 1], gap="medium")
+left, right = st.columns([1, 1], gap="large")
 
-# ── LEFT PANEL ─────────────────────────────────────────────────────────────────
 with left:
-    st.markdown('<div class="section-label">Describe your component</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Your description</div>', unsafe_allow_html=True)
     prompt = st.text_area(
         label="",
         value=st.session_state.prompt_input,
         placeholder='e.g. "A glassmorphism card with a blurred background and soft border"',
-        height=130,
+        height=140,
         label_visibility="collapsed",
         key="main_prompt"
     )
 
-    # Options
     oc1, oc2, oc3 = st.columns(3)
     with oc1:
         use_js = st.checkbox("JavaScript", value=False)
@@ -264,65 +203,53 @@ with left:
     with oc3:
         dark_theme = st.checkbox("Dark theme", value=False)
 
-    generate_btn = st.button("⚡  Generate code", use_container_width=True)
+    st.button("⚡  Generate code", use_container_width=True, key="gen_btn",
+              type="primary", on_click=lambda: None)
+    generate_btn = st.session_state.get("gen_btn", False)
 
-    # Refine section
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown('<div class="section-label">Refine output</div>', unsafe_allow_html=True)
     rc1, rc2 = st.columns([5, 1])
     with rc1:
-        refine_text = st.text_input(
-            label="",
-            placeholder='e.g. "Make the button red and larger"',
-            label_visibility="collapsed",
-            key="refine_input"
-        )
+        refine_text = st.text_input("", placeholder='e.g. "Make the button red and larger"',
+                                    label_visibility="collapsed", key="refine_input")
     with rc2:
         refine_btn = st.button("→", key="refine_go")
 
-    # Download
     if st.session_state.last_code:
         st.markdown("<hr>", unsafe_allow_html=True)
         bc1, bc2 = st.columns(2)
         with bc1:
-            st.download_button(
-                "⬇ Download HTML",
-                data=st.session_state.last_code,
-                file_name="component.html",
-                mime="text/html",
-                use_container_width=True
-            )
+            st.download_button("⬇ Download HTML", data=st.session_state.last_code,
+                               file_name="component.html", mime="text/html",
+                               use_container_width=True)
         with bc2:
             if st.button("🗑 Clear", use_container_width=True, key="clear_btn"):
                 st.session_state.last_code = ""
                 st.session_state.status = "idle"
                 st.rerun()
 
-    # History
     if st.session_state.history:
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown('<div class="section-label">Recent prompts</div>', unsafe_allow_html=True)
         for item in reversed(st.session_state.history[-5:]):
-            label = item if len(item) <= 48 else item[:46] + "…"
+            label = item if len(item) <= 50 else item[:48] + "…"
             if st.button(f"↩  {label}", key=f"hist_{item[:25]}", use_container_width=True):
                 st.session_state.prompt_input = item
                 st.rerun()
 
-# ── RIGHT PANEL ────────────────────────────────────────────────────────────────
 with right:
-    # Status
-    status_map = {
-        "idle":  ('<span class="status-idle">○ idle</span>', ""),
-        "busy":  ('<span class="status-busy">◉ generating…</span>', ""),
-        "done":  ('<span class="status-done">✓ done</span>', ""),
-        "error": ('<span class="status-error">✕ error</span>', ""),
-    }
-    badge_html = status_map.get(st.session_state.status, status_map["idle"])[0]
+    status_html = {
+        "idle":  '<span class="status-idle">○ idle</span>',
+        "busy":  '<span class="status-busy">◉ generating…</span>',
+        "done":  '<span class="status-done">✓ done</span>',
+        "error": '<span class="status-error">✕ error</span>',
+    }.get(st.session_state.status, "")
 
     st.markdown(f"""
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <div class="section-label" style="margin:0;">Generated code</div>
-        {badge_html}
+        {status_html}
     </div>
     """, unsafe_allow_html=True)
 
@@ -331,59 +258,51 @@ with right:
         code_placeholder.code(st.session_state.last_code, language="html")
     else:
         code_placeholder.markdown(
-            '<div style="background:#0a0a10;border:1px solid #1e1e28;border-radius:8px;padding:2rem;text-align:center;color:#3a3a50;font-size:13px;">Your HTML code will appear here</div>',
+            '<div class="empty-panel" style="height:160px;">Your HTML will appear here</div>',
             unsafe_allow_html=True
         )
 
-    st.markdown('<div class="section-label" style="margin-top:1rem;">Live preview</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label" style="margin-top:1rem;">Live preview</div>',
+                unsafe_allow_html=True)
     preview_placeholder = st.empty()
     if st.session_state.last_code:
-        preview_placeholder.components.v1.html(
-            st.session_state.last_code, height=340, scrolling=True
-        )
+        preview_placeholder.components.v1.html(st.session_state.last_code, height=340, scrolling=True)
     else:
         preview_placeholder.markdown(
-            '<div style="background:#0a0a10;border:1px solid #1e1e28;border-radius:8px;height:340px;display:flex;align-items:center;justify-content:center;color:#3a3a50;font-size:13px;">Preview renders here after generation</div>',
+            '<div class="empty-panel" style="height:340px;">Preview renders here after generation</div>',
             unsafe_allow_html=True
         )
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-def build_system_prompt(js: bool, tailwind: bool, dark: bool) -> str:
+def build_system_prompt(js, tailwind, dark):
     p = """You are an expert frontend developer. Convert natural language UI descriptions into beautiful, self-contained HTML/CSS.
-
 Rules:
 - Return ONLY raw HTML. No markdown fences, no explanations.
 - Full HTML document: <!DOCTYPE html> through </html>
 - All CSS inside a <style> block in <head>
 - Center the component on the page
-- Make it visually polished — good spacing, typography, and color
-"""
-    p += f"- Background: {'#0f0f13 (dark)' if dark else '#f3f4f6 (light)'}\n"
-    if tailwind:
-        p += "- Use Tailwind CSS via CDN: <script src='https://cdn.tailwindcss.com'></script>\n"
-    else:
-        p += "- Use plain CSS only, no frameworks\n"
-    if not js:
-        p += "- No JavaScript. CSS-only interactions only.\n"
+- Make it visually polished — great spacing, typography, and color\n"""
+    p += f"- Page background: {'#0f0f13 (dark)' if dark else '#f3f4f6 (light)'}\n"
+    p += "- Use Tailwind CSS via CDN\n" if tailwind else "- Plain CSS only, no frameworks\n"
+    p += "" if js else "- No JavaScript. CSS-only interactions only.\n"
     return p
 
-def clean_html(text: str) -> str:
+def clean_html(text):
     text = re.sub(r"^```[a-z]*\n?", "", text.strip())
     text = re.sub(r"```$", "", text.strip())
     return text.strip()
 
-def call_api(user_prompt: str, system: str, context_code: str = "") -> str:
+def call_api(user_prompt, system, context_code=""):
     client = anthropic.Anthropic()
-    messages = [{"role": "user", "content": user_prompt}]
     if context_code:
-        messages = [
-            {"role": "user", "content": f"Here is the current HTML:\n{context_code}\n\nRefinement request: {user_prompt}"}
-        ]
+        content = f"Current HTML:\n{context_code}\n\nRefinement: {user_prompt}"
+    else:
+        content = user_prompt
     msg = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system=system,
-        messages=messages
+        messages=[{"role": "user", "content": content}]
     )
     return clean_html(msg.content[0].text)
 
@@ -395,13 +314,14 @@ if generate_btn:
     else:
         st.session_state.status = "busy"
         st.session_state.history.append(p)
-        try:
-            html = call_api(p, build_system_prompt(use_js, use_tailwind, dark_theme))
-            st.session_state.last_code = html
-            st.session_state.status = "done"
-        except Exception as e:
-            st.session_state.status = "error"
-            st.error(f"API error: {e}")
+        with st.spinner("Generating…"):
+            try:
+                html = call_api(p, build_system_prompt(use_js, use_tailwind, dark_theme))
+                st.session_state.last_code = html
+                st.session_state.status = "done"
+            except Exception as e:
+                st.session_state.status = "error"
+                st.error(f"API error: {e}")
         st.rerun()
 
 # ── Refine ─────────────────────────────────────────────────────────────────────
@@ -410,15 +330,14 @@ if refine_btn and refine_text.strip():
         st.warning("Generate something first before refining.")
     else:
         st.session_state.status = "busy"
-        try:
-            html = call_api(
-                refine_text.strip(),
-                build_system_prompt(use_js, use_tailwind, dark_theme),
-                context_code=st.session_state.last_code
-            )
-            st.session_state.last_code = html
-            st.session_state.status = "done"
-        except Exception as e:
-            st.session_state.status = "error"
-            st.error(f"API error: {e}")
+        with st.spinner("Refining…"):
+            try:
+                html = call_api(refine_text.strip(),
+                                build_system_prompt(use_js, use_tailwind, dark_theme),
+                                context_code=st.session_state.last_code)
+                st.session_state.last_code = html
+                st.session_state.status = "done"
+            except Exception as e:
+                st.session_state.status = "error"
+                st.error(f"API error: {e}")
         st.rerun()
