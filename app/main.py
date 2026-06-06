@@ -203,7 +203,7 @@ with left:
     with oc3:
         dark_theme = st.checkbox("Dark theme", value=False)
 
-    st.button("⚡  Generate code", use_container_width=True, key="gen_btn",
+    st.button("Generate code", use_container_width=True, key="gen_btn",
               type="primary", on_click=lambda: None)
     generate_btn = st.session_state.get("gen_btn", False)
 
