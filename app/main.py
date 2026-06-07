@@ -7,7 +7,7 @@ load_dotenv()
 
 st.set_page_config(
     page_title="NL → HTML Assistant",
-    page_icon="🧑‍🎨",
+    page_icon="app/static/favicon.png",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
