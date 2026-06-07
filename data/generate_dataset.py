@@ -1,20 +1,35 @@
 """
-Dataset Generation Script
+generate_dataset.py
+===================
 Generates NL → HTML/CSS pairs using the Anthropic API.
-Saves output to data/dataset.json
+Uses prompt_builder.py and html_utils.py for clean, consistent output.
+Saves to data/dataset.json with auto-resume support.
+
+Usage:
+  python data/generate_dataset.py                   # full run with variations
+  python data/generate_dataset.py --no-variations   # seed prompts only (faster)
+  python data/generate_dataset.py --output data/my_dataset.json
+  python data/generate_dataset.py --delay 1.0       # slower, safer rate limit
 """
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import anthropic
 import json
 import time
-import os
+import argparse
 from dotenv import load_dotenv
 from tqdm import tqdm
 
+from utils.prompt_builder import build_system_prompt, build_variation_prompt, PromptConfig
+from utils.html_utils import clean_html, is_valid_output, summarize
+
 load_dotenv()
 
-# ─── Seed prompts ────────────────────────────────────────────────────────────
-# These are the base descriptions. The script will also generate variations.
+
+# ── Seed prompts ───────────────────────────────────────────────────────────────
 
 SEED_PROMPTS = [
     # Buttons
@@ -52,12 +67,12 @@ SEED_PROMPTS = [
     "A status indicator showing Online with a green dot",
     "A set of filter chips that can be selected or deselected",
 
-    # Layout components
+    # Layout
     "A pricing table with Free, Pro, and Enterprise tiers",
     "A hero section with a headline, subtitle, and two CTA buttons",
     "A footer with 3 columns of links and a copyright notice",
     "A modal dialog with a title, message, and confirm/cancel buttons",
-    "A toast notification saying 'Saved successfully' with a close button",
+    "A toast notification saying Saved successfully with a close button",
 
     # Misc
     "A progress bar at 70% completion",
@@ -68,105 +83,134 @@ SEED_PROMPTS = [
 ]
 
 
-# ─── System prompt ────────────────────────────────────────────────────────────
+# ── Generation config ──────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are an expert frontend developer. Convert natural language UI descriptions into clean, self-contained HTML/CSS code.
-
-Rules:
-- Return ONLY the HTML code. No explanations, no markdown fences, no comments.
-- Include a <style> block inside <head> for all CSS
-- Make the component visually polished and modern
-- Center the component on the page with a light gray (#f3f4f6) background
-- The full output must be a complete HTML document starting with <!DOCTYPE html>
-- Use plain CSS only, no frameworks
-- No JavaScript unless it's essential for the component to make sense
-"""
+GENERATION_CONFIG = PromptConfig(
+    use_js=False,
+    use_tailwind=False,
+    dark_theme=False,
+    use_few_shot=True,
+)
 
 
-# ─── Variation generator ─────────────────────────────────────────────────────
+# ── Variation generator ────────────────────────────────────────────────────────
 
-VARIATION_SYSTEM = """You are a creative UI copywriter. Given a UI component description, generate 3 natural language variations of it.
-Return ONLY a JSON array of 3 strings. No explanation, no markdown. Example:
-["A red warning button", "A danger button in crimson", "A bold alert button with red background"]
-"""
-
-def generate_variations(client, prompt: str) -> list[str]:
-    """Generate variations of a seed prompt."""
+def generate_variations(client: anthropic.Anthropic, seed: str, n: int = 3) -> list[str]:
+    """Generate n natural language variations of a seed prompt."""
+    system, user = build_variation_prompt(seed, n=n)
     try:
         msg = client.messages.create(
             model="claude-haiku-20240307",
-            max_tokens=300,
-            system=VARIATION_SYSTEM,
-            messages=[{"role": "user", "content": prompt}]
+            max_tokens=400,
+            system=system,
+            messages=[{"role": "user", "content": user}]
         )
         text = msg.content[0].text.strip()
-        return json.loads(text)
-    except Exception:
-        return []
+        variations = json.loads(text)
+        if isinstance(variations, list):
+            return [v for v in variations if isinstance(v, str)]
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"  ⚠ Variation error for '{seed[:40]}': {e}")
+    return []
 
 
-# ─── HTML generator ───────────────────────────────────────────────────────────
+# ── HTML generator ─────────────────────────────────────────────────────────────
 
-def generate_html(client, prompt: str) -> str | None:
-    """Generate HTML/CSS for a given prompt."""
-    try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        html = msg.content[0].text.strip()
-        # Strip markdown fences if present
-        if html.startswith("```"):
-            html = html.split("\n", 1)[1]
-            html = html.rsplit("```", 1)[0]
-        return html.strip()
-    except Exception as e:
-        print(f"  ⚠ Error generating HTML: {e}")
-        return None
+def generate_html(client: anthropic.Anthropic,
+                  prompt: str,
+                  config: PromptConfig,
+                  retries: int = 2) -> dict | None:
+    """Generate HTML for a prompt, validate it, and return a dataset entry."""
+    system = build_system_prompt(config)
+
+    for attempt in range(1, retries + 2):
+        try:
+            msg = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2000,
+                system=system,
+                messages=[{"role": "user", "content": f'Create this UI component: "{prompt}"'}]
+            )
+            html = clean_html(msg.content[0].text)
+
+            if not is_valid_output(html):
+                if attempt <= retries:
+                    print(f"  ↺ Invalid output on attempt {attempt}, retrying...")
+                    time.sleep(1)
+                    continue
+                else:
+                    print(f"  ✗ Skipping '{prompt[:45]}' after {retries + 1} attempts")
+                    return None
+
+            meta = summarize(html)
+            return {
+                "prompt":     prompt,
+                "html":       html,
+                "components": meta["components"],
+                "colors":     meta["colors"],
+                "fonts":      meta["fonts"],
+                "char_count": meta["char_count"],
+                "valid":      meta["validation"]["valid"],
+            }
+
+        except Exception as e:
+            print(f"  ⚠ API error on attempt {attempt}: {e}")
+            if attempt <= retries:
+                time.sleep(2)
+
+    return None
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main(
     use_variations: bool = True,
     output_path: str = "data/dataset.json",
     delay: float = 0.5,
+    variation_seeds: int = 10,
+    variations_per_seed: int = 3,
 ):
     client = anthropic.Anthropic()
-    dataset = []
 
-    # Load existing dataset to allow resuming
+    # Resume support
+    dataset = []
     if os.path.exists(output_path):
         with open(output_path) as f:
             dataset = json.load(f)
         existing_prompts = {d["prompt"] for d in dataset}
-        print(f"📂 Resuming — {len(dataset)} pairs already exist")
+        print(f"📂 Resuming — {len(dataset)} pairs already saved")
     else:
         existing_prompts = set()
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Build full prompt list
+    # Build prompt list
     all_prompts = list(SEED_PROMPTS)
 
     if use_variations:
-        print("🔀 Generating prompt variations...")
-        for seed in tqdm(SEED_PROMPTS[:10], desc="Variations"):  # limit to first 10 seeds
-            variations = generate_variations(client, seed)
+        print(f"\n🔀 Generating variations for {variation_seeds} seed prompts...")
+        for seed in tqdm(SEED_PROMPTS[:variation_seeds], desc="Variations"):
+            variations = generate_variations(client, seed, n=variations_per_seed)
             all_prompts.extend(variations)
             time.sleep(delay)
+        print(f"   → {len(all_prompts)} total prompts after variations")
 
-    # Filter already-generated prompts
-    all_prompts = [p for p in all_prompts if p not in existing_prompts]
-    print(f"\n⚡ Generating HTML for {len(all_prompts)} prompts...\n")
+    new_prompts = [p for p in all_prompts if p not in existing_prompts]
+    print(f"\n⚡ Generating HTML for {len(new_prompts)} new prompts...\n")
 
-    for prompt in tqdm(all_prompts, desc="Generating"):
-        html = generate_html(client, prompt)
-        if html:
-            dataset.append({"prompt": prompt, "html": html})
+    if not new_prompts:
+        print("✅ Nothing new to generate.")
+        return
 
-        # Save after every 5 generations
-        if len(dataset) % 5 == 0:
+    # Generation loop
+    skipped = 0
+    for i, prompt in enumerate(tqdm(new_prompts, desc="Generating"), 1):
+        entry = generate_html(client, prompt, GENERATION_CONFIG)
+        if entry:
+            dataset.append(entry)
+        else:
+            skipped += 1
+
+        if i % 5 == 0:
             with open(output_path, "w") as f:
                 json.dump(dataset, f, indent=2)
 
@@ -176,20 +220,34 @@ def main(
     with open(output_path, "w") as f:
         json.dump(dataset, f, indent=2)
 
-    print(f"\n✅ Done! {len(dataset)} pairs saved to {output_path}")
+    print(f"\n{'─' * 50}")
+    print(f"✅ Done!")
+    print(f"   Total pairs saved : {len(dataset)}")
+    print(f"   Skipped (invalid) : {skipped}")
+    print(f"   Output file       : {output_path}")
+    print(f"{'─' * 50}")
 
+
+# ── CLI ────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate NL → HTML dataset")
-    parser.add_argument("--no-variations", action="store_true", help="Skip variation generation")
-    parser.add_argument("--output", default="data/dataset.json", help="Output file path")
-    parser.add_argument("--delay", type=float, default=0.5, help="Delay between API calls (seconds)")
+    parser = argparse.ArgumentParser(description="Generate NL → HTML/CSS dataset")
+    parser.add_argument("--no-variations",       action="store_true",
+                        help="Skip variation generation (faster)")
+    parser.add_argument("--output",              default="data/dataset.json",
+                        help="Output JSON file path")
+    parser.add_argument("--delay",               type=float, default=0.5,
+                        help="Delay between API calls in seconds")
+    parser.add_argument("--variation-seeds",     type=int, default=10,
+                        help="Number of seed prompts to generate variations for")
+    parser.add_argument("--variations-per-seed", type=int, default=3,
+                        help="Number of variations per seed prompt")
     args = parser.parse_args()
 
     main(
         use_variations=not args.no_variations,
         output_path=args.output,
         delay=args.delay,
+        variation_seeds=args.variation_seeds,
+        variations_per_seed=args.variations_per_seed,
     )
