@@ -1,7 +1,13 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import anthropic
-import re
 from dotenv import load_dotenv
+
+from utils.prompt_builder import quick_prompt, build_refinement_prompt, PromptConfig
+from utils.html_utils import clean_html, is_valid_output, repair_html
 
 load_dotenv()
 
@@ -40,7 +46,6 @@ html, body, [class*="css"] {
     font-size: 1rem;
     margin-bottom: 0.5rem;
 }
-
 .section-label {
     font-size: 0.7rem;
     font-weight: 700;
@@ -51,48 +56,6 @@ html, body, [class*="css"] {
 }
 
 hr { border: none; border-top: 1px solid #e5e7eb; margin: 1rem 0; }
-
-/* Chips */
-.stButton > button[kind="secondary"] {
-    background: transparent !important;
-    border: 1px solid #e5e7eb !important;
-    color: #6b7280 !important;
-    border-radius: 20px !important;
-    font-size: 12px !important;
-    padding: 4px 14px !important;
-    font-family: 'Syne', sans-serif !important;
-}
-.stButton > button[kind="secondary"]:hover {
-    border-color: #a78bfa !important;
-    color: #7c3aed !important;
-}
-
-/* Generate button */
-div[data-testid="stButton"]:has(button#gen_btn) > button,
-.gen-btn > button {
-    background: linear-gradient(135deg, #7c3aed, #2563eb) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-    font-size: 14px !important;
-    padding: 0.6rem 1rem !important;
-    width: 100% !important;
-    font-family: 'Syne', sans-serif !important;
-}
-
-.stButton > button {
-    font-family: 'Syne', sans-serif !important;
-    border-radius: 8px !important;
-}
-
-/* Primary generate button override */
-button[kind="primary"] {
-    background: linear-gradient(135deg, #7c3aed, #2563eb) !important;
-    color: white !important;
-    border: none !important;
-    font-weight: 700 !important;
-}
 
 .stTextArea textarea {
     border: 1px solid #e5e7eb !important;
@@ -105,7 +68,6 @@ button[kind="primary"] {
     border-color: #a78bfa !important;
     box-shadow: 0 0 0 3px rgba(167,139,250,0.15) !important;
 }
-
 .stTextInput input {
     border: 1px solid #e5e7eb !important;
     border-radius: 8px !important;
@@ -115,13 +77,21 @@ button[kind="primary"] {
 .stTextInput input:focus {
     border-color: #a78bfa !important;
 }
-
 .stCheckbox label {
     font-size: 13px !important;
     color: #6b7280 !important;
     font-family: 'Syne', sans-serif !important;
 }
-
+.stButton > button {
+    font-family: 'Syne', sans-serif !important;
+    border-radius: 8px !important;
+}
+button[kind="primary"] {
+    background: linear-gradient(135deg, #7c3aed, #2563eb) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 700 !important;
+}
 .stDownloadButton > button {
     border: 1px solid #e5e7eb !important;
     border-radius: 8px !important;
@@ -130,11 +100,10 @@ button[kind="primary"] {
     width: 100% !important;
 }
 
-/* Status badges */
-.status-idle  { background:#f3f4f6; color:#9ca3af; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
-.status-busy  { background:#fef3c7; color:#d97706; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
-.status-done  { background:#d1fae5; color:#065f46; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
-.status-error { background:#fee2e2; color:#991b1b; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; }
+.status-idle  { background:#f3f4f6; color:#9ca3af; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+.status-busy  { background:#fef3c7; color:#d97706; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+.status-done  { background:#d1fae5; color:#065f46; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+.status-error { background:#fee2e2; color:#991b1b; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
 
 .empty-panel {
     background: #f9fafb;
@@ -147,11 +116,15 @@ button[kind="primary"] {
     font-size: 13px;
     font-family: 'Syne', sans-serif;
 }
+
+.validation-pass { color: #065f46; font-size: 12px; font-weight: 600; }
+.validation-fail { color: #991b1b; font-size: 12px; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Session state ──────────────────────────────────────────────────────────────
-for k, v in [("history", []), ("last_code", ""), ("status", "idle"), ("prompt_input", "")]:
+for k, v in [("history", []), ("last_code", ""), ("last_prompt", ""),
+             ("status", "idle"), ("prompt_input", ""), ("validation", None)]:
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -167,7 +140,7 @@ EXAMPLES = [
     "Pricing table: Free, Pro, Enterprise",
     "A login form with email and password",
     "A toast — saved successfully",
-    "A star rating: 4 of 5 stars",
+    "A star rating showing 4 of 5 stars",
 ]
 
 st.markdown('<div class="section-label">Try an example</div>', unsafe_allow_html=True)
@@ -203,8 +176,8 @@ with left:
     with oc3:
         dark_theme = st.checkbox("Dark theme", value=False)
 
-    st.button("Generate code", use_container_width=True, key="gen_btn",
-              type="primary", on_click=lambda: None)
+    st.button("Generate code", use_container_width=True,
+              key="gen_btn", type="primary")
     generate_btn = st.session_state.get("gen_btn", False)
 
     st.markdown("<hr>", unsafe_allow_html=True)
@@ -218,15 +191,33 @@ with left:
 
     if st.session_state.last_code:
         st.markdown("<hr>", unsafe_allow_html=True)
+
+        # Validation report
+        if st.session_state.validation:
+            v = st.session_state.validation
+            if v["valid"]:
+                st.markdown('<div class="validation-pass">✓ Valid HTML output</div>',
+                            unsafe_allow_html=True)
+            else:
+                failed = [k for k, val in v.items() if k != "valid" and not val]
+                st.markdown(f'<div class="validation-fail">✗ Issues: {", ".join(failed)}</div>',
+                            unsafe_allow_html=True)
+
         bc1, bc2 = st.columns(2)
         with bc1:
-            st.download_button("⬇ Download HTML", data=st.session_state.last_code,
-                               file_name="component.html", mime="text/html",
-                               use_container_width=True)
+            st.download_button(
+                "⬇ Download HTML",
+                data=st.session_state.last_code,
+                file_name="component.html",
+                mime="text/html",
+                use_container_width=True
+            )
         with bc2:
             if st.button("🗑 Clear", use_container_width=True, key="clear_btn"):
                 st.session_state.last_code = ""
+                st.session_state.last_prompt = ""
                 st.session_state.status = "idle"
+                st.session_state.validation = None
                 st.rerun()
 
     if st.session_state.history:
@@ -266,45 +257,27 @@ with right:
                 unsafe_allow_html=True)
     preview_placeholder = st.empty()
     if st.session_state.last_code:
-        preview_placeholder.components.v1.html(st.session_state.last_code, height=340, scrolling=True)
+        preview_placeholder.components.v1.html(
+            st.session_state.last_code, height=340, scrolling=True
+        )
     else:
         preview_placeholder.markdown(
             '<div class="empty-panel" style="height:340px;">Preview renders here after generation</div>',
             unsafe_allow_html=True
         )
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-def build_system_prompt(js, tailwind, dark):
-    p = """You are an expert frontend developer. Convert natural language UI descriptions into beautiful, self-contained HTML/CSS.
-Rules:
-- Return ONLY raw HTML. No markdown fences, no explanations.
-- Full HTML document: <!DOCTYPE html> through </html>
-- All CSS inside a <style> block in <head>
-- Center the component on the page
-- Make it visually polished — great spacing, typography, and color\n"""
-    p += f"- Page background: {'#0f0f13 (dark)' if dark else '#f3f4f6 (light)'}\n"
-    p += "- Use Tailwind CSS via CDN\n" if tailwind else "- Plain CSS only, no frameworks\n"
-    p += "" if js else "- No JavaScript. CSS-only interactions only.\n"
-    return p
 
-def clean_html(text):
-    text = re.sub(r"^```[a-z]*\n?", "", text.strip())
-    text = re.sub(r"```$", "", text.strip())
-    return text.strip()
-
-def call_api(user_prompt, system, context_code=""):
+# ── API call ───────────────────────────────────────────────────────────────────
+def call_api(user_prompt: str, system: str) -> str:
     client = anthropic.Anthropic()
-    if context_code:
-        content = f"Current HTML:\n{context_code}\n\nRefinement: {user_prompt}"
-    else:
-        content = user_prompt
     msg = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system=system,
-        messages=[{"role": "user", "content": content}]
+        messages=[{"role": "user", "content": user_prompt}]
     )
-    return clean_html(msg.content[0].text)
+    return msg.content[0].text
+
 
 # ── Generate ───────────────────────────────────────────────────────────────────
 if generate_btn:
@@ -314,15 +287,27 @@ if generate_btn:
     else:
         st.session_state.status = "busy"
         st.session_state.history.append(p)
+        st.session_state.last_prompt = p
         with st.spinner("Generating…"):
             try:
-                html = call_api(p, build_system_prompt(use_js, use_tailwind, dark_theme))
-                st.session_state.last_code = html
-                st.session_state.status = "done"
+                # Use prompt_builder for system + user prompts
+                system, user = quick_prompt(p, dark=dark_theme,
+                                            tailwind=use_tailwind, js=use_js)
+                raw  = call_api(user, system)
+
+                # Use html_utils to clean + validate + repair
+                html = clean_html(raw)
+                html = repair_html(html, dark=dark_theme)
+
+                from utils.html_utils import validate_with_report
+                st.session_state.validation = validate_with_report(html)
+                st.session_state.last_code  = html
+                st.session_state.status     = "done"
             except Exception as e:
                 st.session_state.status = "error"
                 st.error(f"API error: {e}")
         st.rerun()
+
 
 # ── Refine ─────────────────────────────────────────────────────────────────────
 if refine_btn and refine_text.strip():
@@ -332,11 +317,24 @@ if refine_btn and refine_text.strip():
         st.session_state.status = "busy"
         with st.spinner("Refining…"):
             try:
-                html = call_api(refine_text.strip(),
-                                build_system_prompt(use_js, use_tailwind, dark_theme),
-                                context_code=st.session_state.last_code)
-                st.session_state.last_code = html
-                st.session_state.status = "done"
+                # Use prompt_builder for the refinement prompt
+                system, _ = quick_prompt(st.session_state.last_prompt,
+                                         dark=dark_theme,
+                                         tailwind=use_tailwind,
+                                         js=use_js)
+                user = build_refinement_prompt(
+                    original_description=st.session_state.last_prompt,
+                    current_html=st.session_state.last_code,
+                    refinement=refine_text.strip()
+                )
+                raw  = call_api(user, system)
+                html = clean_html(raw)
+                html = repair_html(html, dark=dark_theme)
+
+                from utils.html_utils import validate_with_report
+                st.session_state.validation = validate_with_report(html)
+                st.session_state.last_code  = html
+                st.session_state.status     = "done"
             except Exception as e:
                 st.session_state.status = "error"
                 st.error(f"API error: {e}")
