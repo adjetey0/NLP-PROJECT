@@ -1,7 +1,7 @@
 """
 generate_dataset.py
 ===================
-Generates NL → HTML/CSS pairs using the Anthropic API.
+Generates NL → HTML/CSS pairs using OpenRouter API (free models).
 Uses prompt_builder.py and html_utils.py for clean, consistent output.
 Saves to data/dataset.json with auto-resume support.
 
@@ -16,10 +16,10 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import anthropic
 import json
 import time
 import argparse
+import requests
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -27,6 +27,16 @@ from utils.prompt_builder import build_system_prompt, build_variation_prompt, Pr
 from utils.html_utils import clean_html, is_valid_output, summarize
 
 load_dotenv()
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
+
+# Free models on OpenRouter — tries each one in order if previous fails
+FREE_MODELS = [
+    "mistralai/mistral-7b-instruct:free",
+    "google/gemma-3-12b-it:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+]
 
 
 # ── Seed prompts ───────────────────────────────────────────────────────────────
@@ -93,84 +103,124 @@ GENERATION_CONFIG = PromptConfig(
 )
 
 
+# ── OpenRouter API call ────────────────────────────────────────────────────────
+
+def call_openrouter(system: str, user: str, model: str) -> str | None:
+    """
+    Call the OpenRouter API with a given model.
+
+    Args:
+        system: System prompt
+        user:   User message
+        model:  OpenRouter model string
+
+    Returns:
+        Response text or None on failure
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type":  "application/json",
+        "HTTP-Referer":  "https://github.com/nlp-project",
+        "X-Title":       "NL-to-HTML Dataset Generator",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+        "max_tokens": 2000,
+        "temperature": 0.7,
+    }
+    response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
+
+
 # ── Variation generator ────────────────────────────────────────────────────────
 
-def generate_variations(client: anthropic.Anthropic, seed: str, n: int = 3) -> list[str]:
+def generate_variations(seed: str, n: int = 3) -> list[str]:
     """Generate n natural language variations of a seed prompt."""
     system, user = build_variation_prompt(seed, n=n)
-    try:
-        msg = client.messages.create(
-            model="claude-haiku-20240307",
-            max_tokens=400,
-            system=system,
-            messages=[{"role": "user", "content": user}]
-        )
-        text = msg.content[0].text.strip()
-        variations = json.loads(text)
-        if isinstance(variations, list):
-            return [v for v in variations if isinstance(v, str)]
-    except (json.JSONDecodeError, Exception) as e:
-        print(f"  ⚠ Variation error for '{seed[:40]}': {e}")
+    for model in FREE_MODELS:
+        try:
+            text = call_openrouter(system, user, model)
+            if text:
+                # Extract JSON array from response
+                start = text.find("[")
+                end   = text.rfind("]") + 1
+                if start != -1 and end > start:
+                    variations = json.loads(text[start:end])
+                    if isinstance(variations, list):
+                        return [v for v in variations if isinstance(v, str)]
+        except Exception as e:
+            print(f"  ⚠ Variation error ({model}): {e}")
+            continue
     return []
 
 
 # ── HTML generator ─────────────────────────────────────────────────────────────
 
-def generate_html(client: anthropic.Anthropic,
-                  prompt: str,
+def generate_html(prompt: str,
                   config: PromptConfig,
                   retries: int = 2) -> dict | None:
     """Generate HTML for a prompt, validate it, and return a dataset entry."""
     system = build_system_prompt(config)
+    user   = f'Create this UI component: "{prompt}"'
 
     for attempt in range(1, retries + 2):
-        try:
-            msg = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=2000,
-                system=system,
-                messages=[{"role": "user", "content": f'Create this UI component: "{prompt}"'}]
-            )
-            html = clean_html(msg.content[0].text)
+        for model in FREE_MODELS:
+            try:
+                raw  = call_openrouter(system, user, model)
+                html = clean_html(raw)
 
-            if not is_valid_output(html):
-                if attempt <= retries:
-                    print(f"  ↺ Invalid output on attempt {attempt}, retrying...")
-                    time.sleep(1)
+                if not is_valid_output(html):
+                    print(f"  ↺ Invalid output ({model}), attempt {attempt}")
                     continue
-                else:
-                    print(f"  ✗ Skipping '{prompt[:45]}' after {retries + 1} attempts")
-                    return None
 
-            meta = summarize(html)
-            return {
-                "prompt":     prompt,
-                "html":       html,
-                "components": meta["components"],
-                "colors":     meta["colors"],
-                "fonts":      meta["fonts"],
-                "char_count": meta["char_count"],
-                "valid":      meta["validation"]["valid"],
-            }
-
-        except Exception as e:
-            print(f"  ⚠ API error on attempt {attempt}: {e}")
-            if attempt <= retries:
+                meta = summarize(html)
+                return {
+                    "prompt":     prompt,
+                    "html":       html,
+                    "model":      model,
+                    "components": meta["components"],
+                    "colors":     meta["colors"],
+                    "fonts":      meta["fonts"],
+                    "char_count": meta["char_count"],
+                    "valid":      meta["validation"]["valid"],
+                }
+            except Exception as e:
+                print(f"  ⚠ API error ({model}) attempt {attempt}: {e}")
                 time.sleep(2)
+                continue
 
+        if attempt <= retries:
+            print(f"  ↺ All models failed, retrying ({attempt}/{retries})...")
+            time.sleep(3)
+
+    print(f"  ✗ Skipping '{prompt[:45]}' after all attempts")
     return None
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main(
-    use_variations: bool = True,
-    output_path: str = "data/dataset.json",
-    delay: float = 0.5,
-    variation_seeds: int = 10,
-    variations_per_seed: int = 3,
+    use_variations:      bool  = True,
+    output_path:         str   = "data/dataset.json",
+    delay:               float = 1.0,
+    variation_seeds:     int   = 10,
+    variations_per_seed: int   = 3,
 ):
-    client = anthropic.Anthropic()
+    if not OPENROUTER_API_KEY:
+        print("❌ OPENROUTER_API_KEY not found in .env file!")
+        return
+
+    print(f"\n{'═' * 50}")
+    print(f"  NL → HTML Dataset Generator (OpenRouter)")
+    print(f"{'═' * 50}")
+    print(f"  Models : {', '.join(FREE_MODELS)}")
+    print(f"  Output : {output_path}")
+    print(f"{'═' * 50}\n")
 
     # Resume support
     dataset = []
@@ -189,7 +239,7 @@ def main(
     if use_variations:
         print(f"\n🔀 Generating variations for {variation_seeds} seed prompts...")
         for seed in tqdm(SEED_PROMPTS[:variation_seeds], desc="Variations"):
-            variations = generate_variations(client, seed, n=variations_per_seed)
+            variations = generate_variations(seed, n=variations_per_seed)
             all_prompts.extend(variations)
             time.sleep(delay)
         print(f"   → {len(all_prompts)} total prompts after variations")
@@ -204,7 +254,7 @@ def main(
     # Generation loop
     skipped = 0
     for i, prompt in enumerate(tqdm(new_prompts, desc="Generating"), 1):
-        entry = generate_html(client, prompt, GENERATION_CONFIG)
+        entry = generate_html(prompt, GENERATION_CONFIG)
         if entry:
             dataset.append(entry)
         else:
@@ -231,12 +281,12 @@ def main(
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate NL → HTML/CSS dataset")
+    parser = argparse.ArgumentParser(description="Generate NL → HTML/CSS dataset via OpenRouter")
     parser.add_argument("--no-variations",       action="store_true",
                         help="Skip variation generation (faster)")
     parser.add_argument("--output",              default="data/dataset.json",
                         help="Output JSON file path")
-    parser.add_argument("--delay",               type=float, default=0.5,
+    parser.add_argument("--delay",               type=float, default=1.0,
                         help="Delay between API calls in seconds")
     parser.add_argument("--variation-seeds",     type=int, default=10,
                         help="Number of seed prompts to generate variations for")
