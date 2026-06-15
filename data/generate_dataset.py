@@ -33,13 +33,13 @@ OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 
 # Free models on OpenRouter — tries each one in order if previous fails
 FREE_MODELS = [
-    "mistralai/mistral-7b-instruct:free",
-    "google/gemma-3-12b-it:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
+    "qwen/qwen3-coder:free",
+    "deepseek/deepseek-r1:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
 ]
 
 
-# ── Seed prompts ───────────────────────────────────────────────────────────────
+# Seed prompts
 
 SEED_PROMPTS = [
     # Buttons
