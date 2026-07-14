@@ -1,47 +1,341 @@
-import sys, os
+import sys
+import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import anthropic
 from dotenv import load_dotenv
-from utils.prompt_builder import quick_prompt, build_refinement_prompt
-from utils.html_utils import clean_html, repair_html, validate_with_report
+
+from utils.prompt_builder import quick_prompt, build_refinement_prompt, PromptConfig
+from utils.html_utils import clean_html, is_valid_output, repair_html
 
 load_dotenv()
 
-st.set_page_config(page_title="NL to HTML Assistant", page_icon="app/static/favicon.png", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="NL → HTML Assistant",
+    page_icon="app/static/favicon.png",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; }
-html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; background: #0a0908 !important; color: #e8e6e3 !important; }
+
+html, body, [class*="css"] {
+    font-family: 'Syne', sans-serif !important;
+}
+
 #MainMenu, footer, header { visibility: hidden; }
-.block-container { padding: 2rem 2.5rem 1rem !important; max-width: 1400px !important; }
-.app-title { font-size: 2rem; font-weight: 600; color: #f5f3f0; letter-spacing: -0.03em; margin-bottom: 6px; }
-.app-title span { color: #22c55e; }
-.app-subtitle { font-size: 0.875rem; color: #6b6460; line-height: 1.6; margin-bottom: 1.5rem; }
-.badge { display:inline-block; font-size:10px; font-weight:600; background:#0f2d1a; color:#22c55e; border:1px solid #166534; padding:2px 8px; border-radius:20px; margin-left:8px; vertical-align:middle; }
-.stats-row { display:flex; gap:2.5rem; margin-bottom:1.5rem; padding:1rem 1.2rem; background:#0f0e0d; border:1px solid #1e1c1a; border-radius:10px; }
-.stat-value { font-size:1.1rem; font-weight:600; color:#22c55e; font-family:'JetBrains Mono',monospace; }
-.stat-label { font-size:0.7rem; color:#4a4540; margin-top:2px; }
-.section-label { font-size:0.65rem; font-weight:600; letter-spacing:0.15em; text-transform:uppercase; color:#4a4540; margin-bottom:8px; font-family:'JetBrains Mono',monospace; }
-.stButton > button { font-family:'Inter',sans-serif !important; font-size:12px !important; background:#111010 !important; color:#6b6460 !important; border:1px solid #1e1c1a !important; border-radius:6px !important; padding:5px 12px !important; width:100% !important; }
-.stButton > button:hover { border-color:#22c55e !important; color:#22c55e !important; background:#0a1a0f !important; }
-button[kind="primary"] { background:#22c55e !important; color:#0a0908 !important; border:none !important; font-weight:600 !important; font-size:13px !important; border-radius:6px !important; }
-.stTextArea textarea { background:#0f0e0d !important; border:1px solid #1e1c1a !important; border-radius:8px !important; color:#e8e6e3 !important; font-size:13px !important; resize:none !important; }
-.stTextArea textarea:focus { border-color:#22c55e !important; box-shadow:0 0 0 2px rgba(34,197,94,0.1) !important; }
-.stTextInput input { background:#0f0e0d !important; border:1px solid #1e1c1a !important; border-radius:6px !important; color:#e8e6e3 !important; font-size:12px !important; }
-.stTextInput input:focus { border-color:#22c55e !important; }
-.stCheckbox label { font-size:12px !important; color:#6b6460 !important; }
-.stDownloadButton > button { background:#111010 !important; border:1px solid #1e1c1a !important; color:#6b6460 !important; border-radius:6px !important; font-size:12px !important; width:100% !important; }
-.stDownloadButton > button:hover { border-color:#22c55e !important; color:#22c55e !important; }
-.status-idle { background:#111010; color:#4a4540; padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; font-family:'JetBrains Mono',monospace; border:1px solid #1e1c1a; }
-.status-busy { background:#1a1500; color:#eab308; padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; font-family:'JetBrains Mono',monospace; border:1px solid #713f12; }
-.status-done { background:#0a1a0f; color:#22c55e; padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; font-family:'JetBrains Mono',monospace; border:1px solid #166534; }
-.status-error { background:#1a0a0a; color:#ef4444; padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; font-family:'JetBrains Mono',monospace; border:1px solid #7f1d1d; }
-.empty-state { background:#0f0e0d; border:1px dashed #1e1c1a; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#2a2826; font-size:12px; font-family:'JetBrains Mono',monospace; }
-.valid-pass { color:#22c55e; font-size:11px; font-weight:600; font-family:'JetBrains Mono',monospace; }
-.valid-fail { color:#ef4444; font-size:11px; font-weight:600; font-family:'JetBrains Mono',monospace; }
-hr { border:none; border-top:1px solid #1e1c1a !important; margin:1rem 0 !important; }
+.block-container { padding: 2rem 2rem 1rem !important; max-width: 1400px !important; }
+
+.main-title {
+    font-size: 2.6rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.2rem;
+    line-height: 1.2;
+}
+.subtitle {
+    color: #6b7280;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+.section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 6px;
+}
+
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 1rem 0; }
+
+.stTextArea textarea {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    font-family: 'Syne', sans-serif !important;
+    font-size: 14px !important;
+    resize: none !important;
+}
+.stTextArea textarea:focus {
+    border-color: #a78bfa !important;
+    box-shadow: 0 0 0 3px rgba(167,139,250,0.15) !important;
+}
+.stTextInput input {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    font-family: 'Syne', sans-serif !important;
+    font-size: 13px !important;
+}
+.stTextInput input:focus {
+    border-color: #a78bfa !important;
+}
+.stCheckbox label {
+    font-size: 13px !important;
+    color: #6b7280 !important;
+    font-family: 'Syne', sans-serif !important;
+}
+.stButton > button {
+    font-family: 'Syne', sans-serif !important;
+    border-radius: 8px !important;
+}
+button[kind="primary"] {
+    background: linear-gradient(135deg, #7c3aed, #2563eb) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 700 !important;
+}
+.stDownloadButton > button {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-family: 'Syne', sans-serif !important;
+    width: 100% !important;
+}
+
+.status-idle  { background:#f3f4f6; color:#9ca3af; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+.status-busy  { background:#fef3c7; color:#d97706; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+.status-done  { background:#d1fae5; color:#065f46; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+.status-error { background:#fee2e2; color:#991b1b; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+
+.empty-panel {
+    background: #f9fafb;
+    border: 1.5px dashed #e5e7eb;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d1d5db;
+    font-size: 13px;
+    font-family: 'Syne', sans-serif;
+}
+
+.validation-pass { color: #065f46; font-size: 12px; font-weight: 600; }
+.validation-fail { color: #991b1b; font-size: 12px; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
+
+# Session state
+for k, v in [("history", []), ("last_code", ""), ("last_prompt", ""),
+             ("status", "idle"), ("prompt_input", ""), ("validation", None)]:
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# Header 
+st.markdown('<div class="main-title">NL → HTML Assistant</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Describe a UI component in plain English. Get working HTML/CSS instantly.</div>', unsafe_allow_html=True)
+
+# Example chips
+EXAMPLES = [
+    "A blue button with rounded corners",
+    "A product card with image, title and price",
+    "A dark navbar with logo and nav links",
+    "Pricing table: Free, Pro, Enterprise",
+    "A login form with email and password",
+    "A toast — saved successfully",
+    "A star rating showing 4 of 5 stars",
+]
+
+st.markdown('<div class="section-label">Try an example</div>', unsafe_allow_html=True)
+chip_cols = st.columns(len(EXAMPLES))
+for i, (col, ex) in enumerate(zip(chip_cols, EXAMPLES)):
+    with col:
+        label = ex if len(ex) <= 22 else ex[:20] + "…"
+        if st.button(label, key=f"chip_{i}"):
+            st.session_state.prompt_input = ex
+            st.rerun()
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+# Main layout
+left, right = st.columns([1, 1], gap="large")
+
+with left:
+    st.markdown('<div class="section-label">Your description</div>', unsafe_allow_html=True)
+    prompt = st.text_area(
+        label="",
+        value=st.session_state.prompt_input,
+        placeholder='e.g. "A glassmorphism card with a blurred background and soft border"',
+        height=140,
+        label_visibility="collapsed",
+        key="main_prompt"
+    )
+
+    oc1, oc2, oc3 = st.columns(3)
+    with oc1:
+        use_js = st.checkbox("JavaScript", value=False)
+    with oc2:
+        use_tailwind = st.checkbox("Tailwind CSS", value=False)
+    with oc3:
+        dark_theme = st.checkbox("Dark theme", value=False)
+
+    st.button("Generate code", use_container_width=True,
+              key="gen_btn", type="primary")
+    generate_btn = st.session_state.get("gen_btn", False)
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Refine output</div>', unsafe_allow_html=True)
+    rc1, rc2 = st.columns([5, 1])
+    with rc1:
+        refine_text = st.text_input("", placeholder='e.g. "Make the button red and larger"',
+                                    label_visibility="collapsed", key="refine_input")
+    with rc2:
+        refine_btn = st.button("→", key="refine_go")
+
+    if st.session_state.last_code:
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # Validation report
+        if st.session_state.validation:
+            v = st.session_state.validation
+            if v["valid"]:
+                st.markdown('<div class="validation-pass">✓ Valid HTML output</div>',
+                            unsafe_allow_html=True)
+            else:
+                failed = [k for k, val in v.items() if k != "valid" and not val]
+                st.markdown(f'<div class="validation-fail">✗ Issues: {", ".join(failed)}</div>',
+                            unsafe_allow_html=True)
+
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            st.download_button(
+                "⬇ Download HTML",
+                data=st.session_state.last_code,
+                file_name="component.html",
+                mime="text/html",
+                use_container_width=True
+            )
+        with bc2:
+            if st.button("🗑 Clear", use_container_width=True, key="clear_btn"):
+                st.session_state.last_code = ""
+                st.session_state.last_prompt = ""
+                st.session_state.status = "idle"
+                st.session_state.validation = None
+                st.rerun()
+
+    if st.session_state.history:
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Recent prompts</div>', unsafe_allow_html=True)
+        for item in reversed(st.session_state.history[-5:]):
+            label = item if len(item) <= 50 else item[:48] + "…"
+            if st.button(f"↩  {label}", key=f"hist_{item[:25]}", use_container_width=True):
+                st.session_state.prompt_input = item
+                st.rerun()
+
+with right:
+    status_html = {
+        "idle":  '<span class="status-idle">○ idle</span>',
+        "busy":  '<span class="status-busy">◉ generating…</span>',
+        "done":  '<span class="status-done">✓ done</span>',
+        "error": '<span class="status-error">✕ error</span>',
+    }.get(st.session_state.status, "")
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="section-label" style="margin:0;">Generated code</div>
+        {status_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+    code_placeholder = st.empty()
+    if st.session_state.last_code:
+        code_placeholder.code(st.session_state.last_code, language="html")
+    else:
+        code_placeholder.markdown(
+            '<div class="empty-panel" style="height:160px;">Your HTML will appear here</div>',
+            unsafe_allow_html=True
+        )
+
+    st.markdown('<div class="section-label" style="margin-top:1rem;">Live preview</div>',
+                unsafe_allow_html=True)
+    preview_placeholder = st.empty()
+    if st.session_state.last_code:
+        preview_placeholder.components.v1.html(
+            st.session_state.last_code, height=340, scrolling=True
+        )
+    else:
+        preview_placeholder.markdown(
+            '<div class="empty-panel" style="height:340px;">Preview renders here after generation</div>',
+            unsafe_allow_html=True
+        )
+
+
+# API call
+def call_api(user_prompt: str, system: str) -> str:
+    client = anthropic.Anthropic()
+    msg = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[{"role": "user", "content": user_prompt}]
+    )
+    return msg.content[0].text
+
+
+# Generate
+if generate_btn:
+    p = prompt.strip()
+    if not p:
+        st.warning("Please enter a description first.")
+    else:
+        st.session_state.status = "busy"
+        st.session_state.history.append(p)
+        st.session_state.last_prompt = p
+        with st.spinner("Generating…"):
+            try:
+                # Use prompt_builder for system + user prompts
+                system, user = quick_prompt(p, dark=dark_theme,
+                                            tailwind=use_tailwind, js=use_js)
+                raw  = call_api(user, system)
+
+                # Use html_utils to clean + validate + repair
+                html = clean_html(raw)
+                html = repair_html(html, dark=dark_theme)
+
+                from utils.html_utils import validate_with_report
+                st.session_state.validation = validate_with_report(html)
+                st.session_state.last_code  = html
+                st.session_state.status     = "done"
+            except Exception as e:
+                st.session_state.status = "error"
+                st.error(f"API error: {e}")
+        st.rerun()
+
+
+# Refine
+if refine_btn and refine_text.strip():
+    if not st.session_state.last_code:
+        st.warning("Generate something first before refining.")
+    else:
+        st.session_state.status = "busy"
+        with st.spinner("Refining…"):
+            try:
+                # Use prompt_builder for the refinement prompt
+                system, _ = quick_prompt(st.session_state.last_prompt,
+                                         dark=dark_theme,
+                                         tailwind=use_tailwind,
+                                         js=use_js)
+                user = build_refinement_prompt(
+                    original_description=st.session_state.last_prompt,
+                    current_html=st.session_state.last_code,
+                    refinement=refine_text.strip()
+                )
+                raw  = call_api(user, system)
+                html = clean_html(raw)
+                html = repair_html(html, dark=dark_theme)
+
+                from utils.html_utils import validate_with_report
+                st.session_state.validation = validate_with_report(html)
+                st.session_state.last_code  = html
+                st.session_state.status     = "done"
+            except Exception as e:
+                st.session_state.status = "error"
+                st.error(f"API error: {e}")
+        st.rerun()
