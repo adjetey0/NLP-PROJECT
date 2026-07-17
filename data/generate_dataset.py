@@ -31,7 +31,7 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 
-# Free models on OpenRouter — tries each one in order if previous fail
+# Free models on OpenRouter — tries each one in order if previous fails
 FREE_MODELS = [
     "qwen/qwen3-coder:free",
     "deepseek/deepseek-r1:free",
